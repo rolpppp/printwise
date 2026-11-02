@@ -2,6 +2,8 @@ package com.printwise.ai
 
 import android.graphics.Bitmap
 import android.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -12,12 +14,16 @@ class GeminiClassSuggestionService(
     private val bitmap: Bitmap,
     private val endpoint: String
 ) : ClassSuggestionService {
-    override suspend fun suggestClasses(): List<SuggestedClass> {
+    override suspend fun suggestClasses(): List<SuggestedClass> = withContext(Dispatchers.IO) {
+        requestSuggestions()
+    }
+
+    private fun requestSuggestions(): List<SuggestedClass> {
         if (endpoint.isBlank()) {
             throw SuggestionException("Gemini backend endpoint is not configured")
         }
         val requestUrl = "${endpoint.trimEnd('/')}/v1/class-suggestions"
-        val encoded = bitmap.toJpegBase64()
+        val encoded = bitmap.downscaled(MAX_UPLOAD_EDGE_PX).toJpegBase64()
         val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 15_000
@@ -60,6 +66,15 @@ private fun JSONArray.toSuggestedClasses(): List<SuggestedClass> {
             confidence = if (item.has("confidence")) item.optDouble("confidence").toFloat() else null
         )
     }
+}
+
+private const val MAX_UPLOAD_EDGE_PX = 1600
+
+private fun Bitmap.downscaled(maxEdge: Int): Bitmap {
+    val longest = maxOf(width, height)
+    if (longest <= maxEdge) return this
+    val scale = maxEdge.toFloat() / longest
+    return Bitmap.createScaledBitmap(this, (width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1), true)
 }
 
 private fun Bitmap.toJpegBase64(): String {
