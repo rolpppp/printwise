@@ -1,0 +1,6 @@
+name = "printwise-gemini"
+main = "cloudflare-worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"

@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,9 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.max
+import com.printwise.ai.GeminiClassSuggestionService
+import com.printwise.ai.MlKitCropSuggestionService
+import kotlinx.coroutines.launch
 
 private const val APP_NAME = "Printwise"
 private const val A4_WIDTH = 8.27f
@@ -129,7 +133,7 @@ private fun PrintwiseApp(activity: Activity) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (screen) {
                 Screen.IMPORT -> ImportScreen { importLauncher.launch("image/*") }
-                Screen.CLASSES -> ClassesScreen(project.classes, { project = project.copy(classes = it) }) {
+                Screen.CLASSES -> ClassesScreen(preview, project.classes, { project = project.copy(classes = it) }) {
                     screen = Screen.CROPS
                 }
                 Screen.CROPS -> CropScreen(preview, project.classes, { project = project.copy(classes = it) }) {
@@ -169,14 +173,36 @@ private fun ImportScreen(onImport: () -> Unit) {
 
 @Composable
 private fun ClassesScreen(
+    preview: Bitmap?,
     classes: List<PrintClass>,
     onChange: (List<PrintClass>) -> Unit,
     onNext: () -> Unit
 ) {
     var newLabel by remember { mutableStateOf("") }
+    var aiMessage by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Confirm classes", style = MaterialTheme.typography.headlineSmall)
         Text("Rename, remove, or add groups. Suggestions are only a starting point.")
+        Button(
+            onClick = {
+                if (preview == null) return@Button
+                scope.launch {
+                    aiMessage = "Asking Gemini backend for class suggestions..."
+                    runCatching {
+                        GeminiClassSuggestionService(preview, BuildConfig.GEMINI_BACKEND_URL).suggestClasses()
+                    }.onSuccess { suggestions ->
+                        onChange(suggestions.map { PrintClass(label = it.label) })
+                        aiMessage = "Gemini suggestions added. Confirm the labels and assign crops manually."
+                    }.onFailure { error ->
+                        aiMessage = error.message ?: "Gemini suggestion failed."
+                    }
+                }
+            },
+            enabled = preview != null,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Suggest classes with Gemini") }
+        if (aiMessage.isNotBlank()) Text(aiMessage)
         Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(classes, key = { it.id }) { item ->
@@ -226,6 +252,8 @@ private fun CropScreen(
     onChange: (List<PrintClass>) -> Unit,
     onNext: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    var aiMessage by remember { mutableStateOf("") }
     var selectedClass by remember { mutableStateOf(classes.firstOrNull()?.id) }
     var cropLeft by remember { mutableStateOf("0") }
     var cropTop by remember { mutableStateOf("0") }
@@ -242,6 +270,30 @@ private fun CropScreen(
             }
         }
         Text("Crop rectangle in source pixels")
+        Button(
+            onClick = {
+                if (preview == null || selected == null) return@Button
+                scope.launch {
+                    aiMessage = "ML Kit is suggesting crops..."
+                    runCatching { MlKitCropSuggestionService(preview).suggestCrops() }
+                        .onSuccess { suggestions ->
+                            val crops = suggestions.map {
+                                Crop(
+                                    sourceRect = it.sourceRect,
+                                    aspectRatio = it.sourceRect.width() / it.sourceRect.height(),
+                                    classId = selected.id
+                                )
+                            }
+                            onChange(classes.map { if (it.id == selected.id) it.copy(crops = it.crops + crops) else it })
+                            aiMessage = "ML Kit suggestions added. Review and correct them below."
+                        }
+                        .onFailure { error -> aiMessage = error.message ?: "ML Kit suggestion failed." }
+                }
+            },
+            enabled = preview != null && selected != null,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Suggest crops with ML Kit") }
+        if (aiMessage.isNotBlank()) Text(aiMessage)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SmallField("Left", cropLeft) { cropLeft = it }
             SmallField("Top", cropTop) { cropTop = it }

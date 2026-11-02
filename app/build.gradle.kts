@@ -14,10 +14,16 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+        buildConfigField(
+            "String",
+            "GEMINI_BACKEND_URL",
+            "\"${project.findProperty("printwiseGeminiBackendUrl") ?: ""}\""
+        )
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -31,4 +37,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 }
