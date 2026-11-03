@@ -18,6 +18,7 @@ import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import androidx.core.content.FileProvider
 import com.printwise.image.ImageLoader
+import com.printwise.image.Upscaler
 import com.printwise.layout.PageLayout
 import com.printwise.model.MARGIN_IN
 import com.printwise.model.PaperSize
@@ -38,13 +39,23 @@ private const val TWIPS_PER_INCH = 1440f
 fun exportFileName(extension: String): String =
     "Printwise-${SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date())}.$extension"
 
-/** Crops each piece once from the working image, so a piece printed 10 times is embedded once. */
-private fun cropPieces(source: Bitmap, pieces: List<PrintPiece>): Map<String, Bitmap> =
-    pieces.mapNotNull { piece -> ImageLoader.crop(source, piece.box)?.let { piece.id to it } }.toMap()
+/**
+ * Crops each placed piece once from the picture it came from ([sources] by sheet id), so a piece printed 10 times
+ * is embedded once. Placements carry their own size, so a copy resized on its own still uses this one crop; the
+ * crop is upscaled for the largest copy on the pages, so none of them gets left for the printer to stretch.
+ */
+private fun cropPieces(sources: Map<String, Bitmap>, pieces: List<PrintPiece>, layout: PageLayout): Map<String, Bitmap> {
+    val tallest = layout.placements.groupBy { it.pieceId }.mapValues { (_, placed) -> placed.maxOf { it.heightIn } }
+    return pieces.mapNotNull { piece ->
+        val printHeightIn = tallest[piece.id] ?: return@mapNotNull null
+        val source = sources[piece.sourceId] ?: return@mapNotNull null
+        ImageLoader.crop(source, piece.box)?.let { piece.id to Upscaler.forPrint(it, printHeightIn) }
+    }.toMap()
+}
 
 object PdfExporter {
-    fun render(source: Bitmap, pieces: List<PrintPiece>, layout: PageLayout): ByteArray {
-        val crops = cropPieces(source, pieces)
+    fun render(sources: Map<String, Bitmap>, pieces: List<PrintPiece>, layout: PageLayout): ByteArray {
+        val crops = cropPieces(sources, pieces, layout)
         val widthPt = (layout.pageWidthIn * POINTS_PER_INCH).toInt()
         val heightPt = (layout.pageHeightIn * POINTS_PER_INCH).toInt()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -73,8 +84,8 @@ object PdfExporter {
 }
 
 object DocxExporter {
-    fun render(source: Bitmap, pieces: List<PrintPiece>, layout: PageLayout): ByteArray {
-        val crops = cropPieces(source, pieces)
+    fun render(sources: Map<String, Bitmap>, pieces: List<PrintPiece>, layout: PageLayout): ByteArray {
+        val crops = cropPieces(sources, pieces, layout)
         val relIds = crops.keys.withIndex().associate { (index, id) -> id to "rIdImg${index + 1}" }
         val mediaNames = crops.keys.withIndex().associate { (index, id) -> id to "piece${index + 1}.png" }
         var drawingId = 1

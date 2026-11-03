@@ -27,5 +27,8 @@ Thumbs.db
 .dev.vars
 
 # Secrets
+keystore.properties
+*.jks
+*.keystore
 .env
 !.env.example

@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.Printwise" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
-        <item name="android:colorAccent">#B0285F</item>
+        <item name="android:colorAccent">#3563F5</item>
     </style>
-    <color name="window_background">#FFF8F8</color>
+    <color name="window_background">#F8FAFC</color>
 </resources>

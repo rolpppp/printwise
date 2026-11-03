@@ -29,13 +29,16 @@ data class Box(val left: Float, val top: Float, val right: Float, val bottom: Fl
  * One piece the user wants printed.
  * [heightIn] is null while the piece follows the sheet's proportions (see [PrintPlan.heightOf]).
  * [detectedId] links the piece back to the segmenter result it came from, if any.
+ * [sourceId] names the picture (sheet) [box] is measured in. [name] is the user's label; null shows "Piece N".
  */
 data class PrintPiece(
     val id: String = UUID.randomUUID().toString(),
     val box: Box,
+    val sourceId: String = "",
     val heightIn: Float? = null,
     val copies: Int = 1,
-    val detectedId: Int? = null
+    val detectedId: Int? = null,
+    val name: String? = null
 )
 
 enum class LengthUnit(val label: String, val perInch: Float, val step: Float) {
@@ -44,11 +47,12 @@ enum class LengthUnit(val label: String, val perInch: Float, val step: Float) {
 
     fun fromInches(inches: Float) = inches * perInch
     fun toInches(value: Float) = value / perInch
-    fun format(inches: Float): String {
+    /** The number alone, without the unit label (what gets typed into a size field). */
+    fun formatNumber(inches: Float): String {
         val value = fromInches(inches)
-        val text = if (this == IN) "%.2f".format(value).trimEnd('0').trimEnd('.') else "%.1f".format(value).removeSuffix(".0")
-        return "$text $label"
+        return if (this == IN) "%.2f".format(value).trimEnd('0').trimEnd('.') else "%.1f".format(value).removeSuffix(".0")
     }
+    fun format(inches: Float) = "${formatNumber(inches)} $label"
 }
 
 enum class PaperSize(val label: String, val widthIn: Float, val heightIn: Float) {
@@ -58,10 +62,14 @@ enum class PaperSize(val label: String, val widthIn: Float, val heightIn: Float)
 
 enum class Orientation(val label: String) { BEST("Best fit"), PORTRAIT("Portrait"), LANDSCAPE("Landscape") }
 
-const val MARGIN_IN = 0.25f
+const val MARGIN_IN = 0.5f
 const val GAP_IN = 0.10f
 const val DEFAULT_TALLEST_IN = 3f
 const val MIN_PIECE_IN = 0.25f
+/** Below this many source pixels per printed inch, a piece is likely to look soft or blurry on paper. */
+const val SHARP_PPI = 150f
+/** Exports upscale pieces toward this density so the printer isn't left to stretch a small image. */
+const val TARGET_PRINT_PPI = 300f
 
 /** Sizing rules shared by the size screen, the packer and the exporters. */
 object PrintPlan {
@@ -74,4 +82,10 @@ object PrintPlan {
     }
 
     fun widthOf(piece: PrintPiece, heightIn: Float) = heightIn * piece.box.aspect
+
+    /** Source pixels available per printed inch when [piece] is printed [heightIn] tall. */
+    fun pixelsPerInch(piece: PrintPiece, heightIn: Float) = if (heightIn > 0f) piece.box.height / heightIn else 0f
+
+    /** True when [piece] has too few pixels to print sharply at [heightIn]. */
+    fun mayLookBlurry(piece: PrintPiece, heightIn: Float) = pixelsPerInch(piece, heightIn) < SHARP_PPI
 }

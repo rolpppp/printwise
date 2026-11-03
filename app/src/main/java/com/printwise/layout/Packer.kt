@@ -4,16 +4,19 @@ import com.printwise.model.GAP_IN
 import com.printwise.model.MARGIN_IN
 import com.printwise.model.Orientation
 import com.printwise.model.PaperSize
+import java.util.UUID
 
 data class PackItem(val pieceId: String, val widthIn: Float, val heightIn: Float)
 
+/** One printed copy on a page. [id] identifies this copy alone, so it can be moved or resized on its own. */
 data class Placement(
     val pieceId: String,
     val page: Int,
     val xIn: Float,
     val yIn: Float,
     val widthIn: Float,
-    val heightIn: Float
+    val heightIn: Float,
+    val id: String = UUID.randomUUID().toString()
 )
 
 data class PageLayout(

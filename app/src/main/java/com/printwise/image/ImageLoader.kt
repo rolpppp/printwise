@@ -20,8 +20,10 @@ object ImageLoader {
         // With inJustDecodeBounds, decodeStream always returns null; only the outWidth/outHeight matter.
         (resolver.openInputStream(uri) ?: return null).use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        // Halve only while the result stays at or above the cap; scaleDown then trims precisely. Halving until it
+        // fits under the cap would throw away up to half the detail (a 4500 px photo would end up 2250 px).
         var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / sample > MAX_WORKING_EDGE_PX) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_WORKING_EDGE_PX) sample *= 2
         val options = BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888

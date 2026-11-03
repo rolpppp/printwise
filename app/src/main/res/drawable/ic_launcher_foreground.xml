@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A page with two pieces laid out on it. Kept inside the 66dp safe zone so no launcher mask clips it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Drawn at 1x, then scaled about the centre; the farthest corner stays inside the 33dp safe radius. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="1.12"
+        android:scaleY="1.12">
+        <!-- Page, with its top-right corner folded over -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M39,31H62L72,41V74A3,3 0,0 1,69 77H39A3,3 0,0 1,36 74V34A3,3 0,0 1,39 31Z" />
+        <!-- Fold -->
+        <path
+            android:fillColor="#C9D6FD"
+            android:pathData="M62,31V38A3,3 0,0 0,65 41H72Z" />
+        <!-- Round piece -->
+        <path
+            android:fillColor="#FF914D"
+            android:pathData="M40,51.5a6.5,6.5 0,1 0,13 0a6.5,6.5 0,1 0,-13 0Z" />
+        <!-- Square piece -->
+        <path
+            android:fillColor="#20C9B0"
+            android:pathData="M58,50H66A2,2 0,0 1,68 52V60A2,2 0,0 1,66 62H58A2,2 0,0 1,56 60V52A2,2 0,0 1,58 50Z" />
+    </group>
+</vector>

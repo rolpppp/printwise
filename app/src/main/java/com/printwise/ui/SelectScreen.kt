@@ -27,15 +27,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.ZoomOutMap
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -71,7 +76,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -86,18 +95,19 @@ import com.printwise.Detection
 import com.printwise.PrintwiseViewModel
 import com.printwise.TapResult
 import com.printwise.model.Box
+import com.printwise.ui.theme.printwise
 import kotlinx.coroutines.delay
 import kotlin.math.min
 import kotlin.math.roundToInt
 
 @Composable
-fun SelectScreen(vm: PrintwiseViewModel, onNext: () -> Unit) {
+fun SelectScreen(vm: PrintwiseViewModel, onAddSheet: () -> Unit, onNext: () -> Unit) {
     val image = vm.sourceImage ?: return
     val colors = MaterialTheme.colorScheme
     val viewport = remember(image) { Viewport(image.width.toFloat(), image.height.toFloat()) }
     val detection = vm.detection
     val allDetectedSelected = vm.detected.isNotEmpty() &&
-        vm.detected.all { d -> vm.pieces.any { it.detectedId == d.id } }
+        vm.detected.all { d -> vm.sheetPieces.any { it.detectedId == d.id } }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -123,19 +133,21 @@ fun SelectScreen(vm: PrintwiseViewModel, onNext: () -> Unit) {
             IconButton(onClick = vm::undo, enabled = vm.canUndo) {
                 Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = "Undo")
             }
-            if (allDetectedSelected || (vm.detected.isEmpty() && vm.pieces.isNotEmpty())) {
+            if (allDetectedSelected || (vm.detected.isEmpty() && vm.sheetPieces.isNotEmpty())) {
                 TextButton(onClick = vm::clearAll) { Text("Clear") }
             } else if (vm.detected.isNotEmpty()) {
                 TextButton(onClick = vm::selectAll) { Text("Select all") }
             }
         }
 
+        SheetChips(vm, onAddSheet)
+
         Box(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .clipToBounds()
-                .background(colors.surfaceContainerHigh)
+                .background(MaterialTheme.printwise.workspace)
         ) {
             SheetEditor(vm, image, viewport)
             DetectionBanner(detection, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
@@ -158,12 +170,52 @@ fun SelectScreen(vm: PrintwiseViewModel, onNext: () -> Unit) {
                 onClick = onNext,
                 enabled = vm.pieces.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(18.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
-                Text("Next: choose sizes", style = MaterialTheme.typography.titleMedium)
+                Text("Next: set sizes", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null)
             }
+        }
+    }
+}
+
+/** One chip per picture in the project (with its piece count), plus a chip to add another picture. */
+@Composable
+private fun SheetChips(vm: PrintwiseViewModel, onAddSheet: () -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+    ) {
+        itemsIndexed(vm.sheets, key = { _, sheet -> sheet.id }) { index, sheet ->
+            val selected = sheet.id == vm.activeSheetId
+            val count = vm.pieces.count { it.sourceId == sheet.id }
+            FilterChip(
+                selected = selected,
+                onClick = { vm.showSheet(sheet.id) },
+                label = { Text("Picture ${index + 1} · $count") },
+                leadingIcon = { Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = if (selected && vm.sheets.size > 1) {
+                    {
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Remove picture ${index + 1}",
+                            modifier = Modifier.size(18.dp).clickable(role = Role.Button) { vm.removeSheet(sheet.id) }
+                        )
+                    }
+                } else null,
+                modifier = Modifier.animateItem()
+            )
+        }
+        item(key = "add") {
+            AssistChip(
+                onClick = onAddSheet,
+                enabled = vm.canAddSheet,
+                label = { Text(if (vm.loading) "Opening…" else "Add picture") },
+                leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.animateItem()
+            )
         }
     }
 }
@@ -186,7 +238,7 @@ private fun DetectionBanner(detection: Detection, modifier: Modifier) {
         exit = fadeOut() + slideOutVertically { -it }
     ) {
         Surface(
-            shape = RoundedCornerShape(50),
+            shape = CircleShape,
             color = MaterialTheme.colorScheme.inverseSurface,
             contentColor = MaterialTheme.colorScheme.inverseOnSurface,
             shadowElevation = 6.dp
@@ -198,7 +250,7 @@ private fun DetectionBanner(detection: Detection, modifier: Modifier) {
                     )
                     else -> Icon(
                         Icons.Rounded.AutoAwesome, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.inversePrimary, modifier = Modifier.size(18.dp)
+                        tint = MaterialTheme.printwise.accent, modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(Modifier.width(10.dp))
@@ -242,7 +294,13 @@ private fun PieceTray(vm: PrintwiseViewModel) {
                         highlighted = piece.id == vm.activeId,
                         modifier = Modifier
                             .animateItem()
-                            .clickable { vm.activate(if (vm.activeId == piece.id) null else piece.id) }
+                            .clickable(role = Role.Button, onClickLabel = if (piece.id == vm.activeId) "Done editing" else "Edit") {
+                                vm.activate(if (vm.activeId == piece.id) null else piece.id)
+                            }
+                            .semantics {
+                                selected = piece.id == vm.activeId
+                                customActions = listOf(CustomAccessibilityAction("Remove piece ${index + 1}") { vm.remove(piece.id); true })
+                            }
                     )
                 }
             }
@@ -342,6 +400,8 @@ private fun resized(original: Box, handle: Int, dx: Float, dy: Float, imageWidth
 @Composable
 private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Viewport) {
     val colors = MaterialTheme.colorScheme
+    val paper = MaterialTheme.printwise.paper
+    val unselectedBorder = MaterialTheme.printwise.unselectedBorder
     val haptics = LocalHapticFeedback.current
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -364,7 +424,7 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
     }
 
     fun hitTest(point: Offset): Hit {
-        val active = vm.pieces.firstOrNull { it.id == vm.activeId }
+        val active = vm.sheetPieces.firstOrNull { it.id == vm.activeId }
         if (active != null) {
             val r = viewport.rect(active.box)
             if (removePill(r).inflate(6f).contains(point)) return Hit.Remove(active.id)
@@ -373,17 +433,17 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
             if (nearest != null && (nearest.value - point).getDistance() <= handleHitPx) return Hit.Handle(active.id, nearest.index)
             if (r.contains(point)) return Hit.Body(active.id)
         }
-        val inside = vm.pieces.filter { viewport.rect(it.box).contains(point) }.minByOrNull { it.box.area }
+        val inside = vm.sheetPieces.filter { viewport.rect(it.box).contains(point) }.minByOrNull { it.box.area }
         return inside?.let { Hit.Body(it.id) } ?: Hit.Empty
     }
 
     fun clampToImage(p: Offset) = Offset(p.x.coerceIn(0f, imageWidth), p.y.coerceIn(0f, imageHeight))
 
     fun startDrag(hit: Hit): DragMode = when (hit) {
-        is Hit.Handle -> vm.pieces.firstOrNull { it.id == hit.id }?.let { DragMode.Resize(it.id, hit.handle, it.box) } ?: DragMode.Ignore
+        is Hit.Handle -> vm.sheetPieces.firstOrNull { it.id == hit.id }?.let { DragMode.Resize(it.id, hit.handle, it.box) } ?: DragMode.Ignore
         // Dragging the active box moves it; dragging anywhere else draws a new box (even over a big group).
         is Hit.Body -> if (hit.id == vm.activeId) {
-            vm.pieces.firstOrNull { it.id == hit.id }?.let { DragMode.Move(it.id, it.box) } ?: DragMode.Ignore
+            vm.sheetPieces.firstOrNull { it.id == hit.id }?.let { DragMode.Move(it.id, it.box) } ?: DragMode.Ignore
         } else DragMode.Draw
         is Hit.Remove -> DragMode.Ignore
         Hit.Empty -> DragMode.Draw
@@ -450,7 +510,14 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
         Modifier
             .fillMaxSize()
             .onSizeChanged { viewport.size = it }
-            .semantics { contentDescription = "Your sheet. ${vm.pieces.size} pieces selected." }
+            .semantics {
+                contentDescription = "Your sheet. ${vm.pieces.size} pieces selected."
+                // The Remove pill is drawn on the canvas, so screen readers get it as an action instead.
+                val active = vm.pieces.indexOfFirst { it.id == vm.activeId }
+                if (active >= 0) {
+                    customActions = listOf(CustomAccessibilityAction("Remove piece ${active + 1}") { vm.remove(vm.pieces[active].id); true })
+                }
+            }
             .pointerInput(image) {
                 val touchSlop = viewConfiguration.touchSlop
                 awaitEachGesture {
@@ -495,7 +562,7 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
         val o = viewport.origin
         val s = viewport.scale
         val imageRect = Rect(o.x, o.y, o.x + imageWidth * s, o.y + imageHeight * s)
-        drawRect(Color.White, imageRect.topLeft, imageRect.size)
+        drawRect(paper, imageRect.topLeft, imageRect.size)
         drawImage(
             image,
             dstOffset = IntOffset(o.x.roundToInt(), o.y.roundToInt()),
@@ -504,7 +571,7 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
         )
 
         val edit = preview
-        val selected = vm.pieces.map { piece -> piece to viewport.rect(if (edit?.id == piece.id) edit.box else piece.box) }
+        val selected = vm.sheetPieces.map { piece -> piece to viewport.rect(if (edit?.id == piece.id) edit.box else piece.box) }
 
         // Dim what won't be printed so the chosen pieces stand out.
         if (selected.isNotEmpty()) {
@@ -514,24 +581,27 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
             }
         }
 
-        // Detected pieces not (yet) selected: a light dashed outline invites a tap.
-        val chosen = vm.pieces.mapNotNull { it.detectedId }.toSet()
+        // Detected pieces not (yet) selected: a tinted fill and dashed outline invite a tap.
+        val chosen = vm.sheetPieces.mapNotNull { it.detectedId }.toSet()
         val dash = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 6.dp.toPx()))
         vm.detected.filter { it.id !in chosen }.forEach { detected ->
             val r = viewport.rect(detected.box)
-            drawRoundRect(Color.White.copy(alpha = 0.95f), r.topLeft, r.size, CornerRadius(6.dp.toPx()), style = Stroke(2.dp.toPx(), pathEffect = dash))
+            drawRoundRect(colors.secondary.copy(alpha = 0.28f), r.topLeft, r.size, CornerRadius(6.dp.toPx()))
+            drawRoundRect(unselectedBorder, r.topLeft, r.size, CornerRadius(6.dp.toPx()), style = Stroke(2.dp.toPx(), pathEffect = dash))
         }
 
-        selected.forEachIndexed { index, (piece, r) ->
+        // Numbers count across every picture, so they match the size and print steps.
+        val numbers = vm.pieces.withIndex().associate { (index, piece) -> piece.id to index + 1 }
+        selected.forEach { (piece, r) ->
             val active = piece.id == vm.activeId
             drawRoundRect(
                 colors.primary, r.topLeft, r.size, CornerRadius(4.dp.toPx()),
                 style = Stroke(if (active) 3.dp.toPx() else 2.dp.toPx())
             )
-            drawBadge(textMeasurer, "${index + 1}", r.topLeft, colors.primary, colors.onPrimary)
+            drawBadge(textMeasurer, "${numbers[piece.id]}", r.topLeft, colors.primary, colors.onPrimary)
         }
 
-        vm.pieces.firstOrNull { it.id == vm.activeId }?.let { active ->
+        vm.sheetPieces.firstOrNull { it.id == vm.activeId }?.let { active ->
             val r = viewport.rect(if (edit?.id == active.id) edit.box else active.box)
             handlePoints(r, r.width >= edgeHandlesMinPx && r.height >= edgeHandlesMinPx).forEachIndexed { index, point ->
                 val radius = if (index < 4) 8.dp.toPx() else 6.dp.toPx()
@@ -558,9 +628,9 @@ private fun SheetEditor(vm: PrintwiseViewModel, image: ImageBitmap, viewport: Vi
 }
 
 private fun DrawScope.drawBadge(measurer: TextMeasurer, text: String, center: Offset, fill: Color, onFill: Color) {
-    val radius = 11.dp.toPx()
+    val radius = 12.dp.toPx()
     drawCircle(Color.White, radius + 1.5.dp.toPx(), center)
     drawCircle(fill, radius, center)
-    val layout = measurer.measure(text, TextStyle(color = onFill, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+    val layout = measurer.measure(text, TextStyle(color = onFill, fontSize = 12.sp, fontWeight = FontWeight.Bold))
     drawText(layout, topLeft = center - Offset(layout.size.width / 2f, layout.size.height / 2f))
 }
