@@ -181,7 +181,7 @@ fun PrintScreen(
                     onRemovePage = if (layout.pageCount > 1 && layout.placements.none { it.page == page }) {
                         { vm.removePage(page) }
                     } else null,
-                    modifier = Modifier.animateItem()
+                    modifier = Modifier.animateItem().then(if (page == 0) Modifier.tourTarget(TourTarget.PAGE) else Modifier)
                 )
             }
             item(key = "add-page") {
@@ -242,7 +242,11 @@ fun PrintScreen(
         }
         AddTray(vm, selectedPage, numbers, onAdd = ::addPiece)
         BottomActionBar {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.tourTarget(TourTarget.ACTIONS),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 var menuOpen by remember { mutableStateOf(false) }
                 Box {
                     OutlinedButton(
@@ -314,7 +318,7 @@ private fun PaperOptions(vm: PrintwiseViewModel, layout: PageLayout) {
             "${if (layout.pageCount == 1) "1 page" else "${layout.pageCount} pages"} · ${layout.placements.size} pieces",
             style = MaterialTheme.typography.titleLarge
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.tourTarget(TourTarget.PAPER)) {
             OptionChip(
                 icon = Icons.Rounded.Description,
                 label = vm.paper.label,
@@ -481,7 +485,7 @@ private fun AddPageTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
 /** Every piece at its set size; a tap drops one more copy into free space on the selected page. */
 @Composable
 private fun AddTray(vm: PrintwiseViewModel, page: Int, numbers: Map<String, Int>, onAdd: (PrintPiece) -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.tourTarget(TourTarget.TRAY)) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text(

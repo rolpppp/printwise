@@ -17,6 +17,7 @@ import com.printwise.export.PdfExporter
 import com.printwise.export.ShareExporter
 import com.printwise.export.exportFileName
 import com.printwise.image.ImageLoader
+import com.printwise.image.SampleSheet
 import com.printwise.layout.FreeSpace
 import com.printwise.layout.PackItem
 import com.printwise.layout.Packer
@@ -47,6 +48,7 @@ private const val THUMB_EDGE_PX = 360
 const val MAX_SHEETS = 6
 private const val PREFS = "printwise"
 private const val KEY_SHOW_PRINT_GUIDE = "show_print_guide"
+private const val KEY_SEEN_WELCOME = "seen_welcome"
 
 enum class Step(val title: String, val number: Int) {
     HOME("Printwise", 0),
@@ -121,6 +123,9 @@ class PrintwiseViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether the photo-paper printing guide opens before each print (on until the user turns it off). */
     var showPrintGuide by mutableStateOf(prefs.getBoolean(KEY_SHOW_PRINT_GUIDE, true))
         private set
+    /** Whether the welcome screens have been seen (or skipped) once; they open by themselves only on first launch. */
+    var seenWelcome by mutableStateOf(prefs.getBoolean(KEY_SEEN_WELCOME, false))
+        private set
 
     private val history = ArrayDeque<List<PrintPiece>>()
     private val thumbnails = HashMap<Pair<String, Box>, ImageBitmap>()
@@ -191,7 +196,12 @@ class PrintwiseViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Import & detection -----------------------------------------------------------------------------
 
     /** A new project from one picture (Home, or "Share → Printwise"). */
-    fun import(uri: Uri) = load(uri) { sheet ->
+    fun import(uri: Uri) = load(uri, ::startProject)
+
+    /** A new project from the built-in sample sheet, for the guided tour. */
+    fun importSample() = load({ SampleSheet.render() }, ::startProject)
+
+    private fun startProject(sheet: Sheet) {
         thumbnails.clear()
         history.clear()
         canUndo = false
@@ -237,14 +247,15 @@ class PrintwiseViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun load(uri: Uri, onLoaded: (Sheet) -> Unit) {
+    private fun load(uri: Uri, onLoaded: (Sheet) -> Unit) =
+        load({ ImageLoader.load(getApplication<Application>().contentResolver, uri) }, onLoaded)
+
+    private fun load(decode: () -> Bitmap?, onLoaded: (Sheet) -> Unit) {
         if (loading) return
         loading = true
         importError = null
         viewModelScope.launch {
-            val bitmap = withContext(Dispatchers.IO) {
-                runCatching { ImageLoader.load(getApplication<Application>().contentResolver, uri) }.getOrNull()
-            }
+            val bitmap = withContext(Dispatchers.IO) { runCatching(decode).getOrNull() }
             loading = false
             if (bitmap == null) {
                 importError = "We couldn't open that picture. Try a JPG or PNG."
@@ -502,6 +513,12 @@ class PrintwiseViewModel(app: Application) : AndroidViewModel(app) {
     fun changeShowPrintGuide(show: Boolean) {
         showPrintGuide = show
         prefs.edit().putBoolean(KEY_SHOW_PRINT_GUIDE, show).apply()
+    }
+
+    fun markWelcomeSeen() {
+        if (seenWelcome) return
+        seenWelcome = true
+        prefs.edit().putBoolean(KEY_SEEN_WELCOME, true).apply()
     }
 
     // ---- Export -----------------------------------------------------------------------------------------

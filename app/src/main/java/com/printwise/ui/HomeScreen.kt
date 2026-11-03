@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Cake
+import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.printwise.BuildConfig
 
 @Composable
 fun HomeScreen(
@@ -43,14 +46,19 @@ fun HomeScreen(
     continueImage: ImageBitmap?,
     continueCount: Int,
     onPick: () -> Unit,
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    onHowItWorks: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxSize().background(colors.background).systemBarsPadding(), contentAlignment = Alignment.TopCenter) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).systemBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Column(
             Modifier
                 .widthIn(max = 560.dp)
-                .fillMaxSize()
+                .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -124,7 +132,12 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 Text(error, color = colors.error, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
             }
-            Spacer(Modifier.height(24.dp))
+            TextButton(onClick = onHowItWorks, modifier = Modifier.padding(top = 8.dp).height(48.dp)) {
+                Icon(Icons.Rounded.PlayCircleOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("See how it works")
+            }
+            Spacer(Modifier.height(16.dp))
             Text(
                 "Works best with sheets on a plain background, like most printable topper designs.",
                 style = MaterialTheme.typography.bodySmall,
@@ -132,5 +145,12 @@ fun HomeScreen(
                 textAlign = TextAlign.Center
             )
         }
+        // Studio credit and version: pinned under the content, quiet enough not to compete with the actions.
+        Text(
+            "Made by rolpjinri · v${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
     }
 }

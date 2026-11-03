@@ -47,7 +47,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -57,10 +62,14 @@ import com.printwise.export.PrintExporter
 import com.printwise.export.ShareExporter
 import com.printwise.export.exportFileName
 import com.printwise.ui.HomeScreen
+import com.printwise.ui.LocalTour
 import com.printwise.ui.PrintScreen
 import com.printwise.ui.SelectScreen
 import com.printwise.ui.SizeScreen
 import com.printwise.ui.StepProgress
+import com.printwise.ui.TourOverlay
+import com.printwise.ui.TourState
+import com.printwise.ui.WelcomeScreen
 import com.printwise.ui.theme.PrintwiseTheme
 
 class MainActivity : ComponentActivity() {
@@ -111,7 +120,25 @@ private fun PrintwiseApp(vm: PrintwiseViewModel, activity: ComponentActivity) {
         ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     ) { uri -> uri?.let(vm::saveDocx) }
 
-    BackHandler(enabled = vm.step != Step.HOME) { vm.back() }
+    val tour = remember { TourState() }
+    // Opens by itself only on the very first launch, and not when the app was opened by sharing a picture to it.
+    var showWelcome by rememberSaveable { mutableStateOf(!vm.seenWelcome && vm.step == Step.HOME) }
+    var confirmSample by remember { mutableStateOf(false) }
+    val pickPicture = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    fun closeWelcome() {
+        vm.markWelcomeSeen()
+        showWelcome = false
+    }
+    fun startSampleTour() {
+        confirmSample = false
+        closeWelcome()
+        vm.importSample()
+        tour.start()
+    }
+    LaunchedEffect(vm.step) { tour.followStep(vm.step) }
+
+    BackHandler(enabled = showWelcome) { closeWelcome() }
+    BackHandler(enabled = !showWelcome && vm.step != Step.HOME) { vm.back() }
 
     // Success is confirmed with a snackbar rather than a dialog: nothing to decide, so nothing to tap away.
     val snackbar = remember { SnackbarHostState() }
@@ -123,6 +150,70 @@ private fun PrintwiseApp(vm: PrintwiseViewModel, activity: ComponentActivity) {
         }
     }
 
+    CompositionLocalProvider(LocalTour provides tour) {
+        Box(Modifier.fillMaxSize()) {
+            if (showWelcome) {
+                WelcomeScreen(
+                    // Starting the sample replaces the current sheet, so ask first if there is one.
+                    onTrySample = { if (vm.pieces.isNotEmpty()) confirmSample = true else startSampleTour() },
+                    onUseOwnPicture = { closeWelcome(); pickPicture() },
+                    onSkip = ::closeWelcome
+                )
+            } else {
+                Steps(
+                    vm, activity, snackbar,
+                    onPick = pickPicture,
+                    onHowItWorks = { showWelcome = true },
+                    onAddSheet = { addPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onSavePdf = { savePdf.launch(exportFileName("pdf")) },
+                    onSaveDocx = { saveDocx.launch(exportFileName("docx")) }
+                )
+            }
+            TourOverlay(
+                tour = tour,
+                step = vm.step,
+                // Waits for the sample to open and its pieces to be found, so the first tip has something to point at.
+                hidden = showWelcome || vm.loading || vm.detection is Detection.Running,
+                onNavigate = vm::goTo,
+                onUseOwnPicture = { vm.goTo(Step.HOME); pickPicture() }
+            )
+        }
+    }
+
+    ExportStatusDialogs(vm)
+    if (confirmSample) {
+        AlertDialog(
+            onDismissRequest = { confirmSample = false },
+            title = { Text("Open the sample?") },
+            text = { Text("The sample sheet replaces the sheet you're working on now.") },
+            confirmButton = { TextButton(onClick = ::startSampleTour) { Text("Open sample") } },
+            dismissButton = { TextButton(onClick = { confirmSample = false }) { Text("Cancel") } }
+        )
+    }
+    if (vm.pendingChange != null) {
+        AlertDialog(
+            onDismissRequest = vm::cancelPendingChange,
+            title = { Text("Re-arrange pages?") },
+            text = { Text("You've placed or resized pieces by hand on the pages. This change re-arranges the pages and undoes those edits.") },
+            confirmButton = { TextButton(onClick = vm::confirmPendingChange) { Text("Re-arrange") } },
+            dismissButton = { TextButton(onClick = vm::cancelPendingChange) { Text("Cancel") } }
+        )
+    }
+}
+
+/** Home, or the current step with its top bar and progress. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Steps(
+    vm: PrintwiseViewModel,
+    activity: ComponentActivity,
+    snackbar: SnackbarHostState,
+    onPick: () -> Unit,
+    onHowItWorks: () -> Unit,
+    onAddSheet: () -> Unit,
+    onSavePdf: () -> Unit,
+    onSaveDocx: () -> Unit
+) {
     AnimatedContent(
         targetState = vm.step,
         transitionSpec = {
@@ -138,8 +229,9 @@ private fun PrintwiseApp(vm: PrintwiseViewModel, activity: ComponentActivity) {
                 error = vm.importError,
                 continueImage = if (vm.pieces.isNotEmpty()) vm.sheets.firstOrNull()?.image else null,
                 continueCount = vm.pieces.size,
-                onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                onContinue = { vm.goTo(Step.SELECT) }
+                onPick = onPick,
+                onContinue = { vm.goTo(Step.SELECT) },
+                onHowItWorks = onHowItWorks
             )
         } else {
             Scaffold(
@@ -163,7 +255,7 @@ private fun PrintwiseApp(vm: PrintwiseViewModel, activity: ComponentActivity) {
                     when (step) {
                         Step.SELECT -> SelectScreen(
                             vm,
-                            onAddSheet = { addPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onAddSheet = onAddSheet,
                             onNext = { vm.goTo(Step.SIZE) }
                         )
                         Step.SIZE -> SizeScreen(vm, onAddPiece = { vm.goTo(Step.SELECT) }, onNext = { vm.goTo(Step.PRINT) })
@@ -180,25 +272,14 @@ private fun PrintwiseApp(vm: PrintwiseViewModel, activity: ComponentActivity) {
                                     activity.startActivity(ShareExporter.shareIntent(uri, "application/pdf"))
                                 }
                             },
-                            onSavePdf = { savePdf.launch(exportFileName("pdf")) },
-                            onSaveDocx = { saveDocx.launch(exportFileName("docx")) }
+                            onSavePdf = onSavePdf,
+                            onSaveDocx = onSaveDocx
                         )
                         Step.HOME -> Unit
                     }
                 }
             }
         }
-    }
-
-    ExportStatusDialogs(vm)
-    if (vm.pendingChange != null) {
-        AlertDialog(
-            onDismissRequest = vm::cancelPendingChange,
-            title = { Text("Re-arrange pages?") },
-            text = { Text("You've placed or resized pieces by hand on the pages. This change re-arranges the pages and undoes those edits.") },
-            confirmButton = { TextButton(onClick = vm::confirmPendingChange) { Text("Re-arrange") } },
-            dismissButton = { TextButton(onClick = vm::cancelPendingChange) { Text("Cancel") } }
-        )
     }
 }
 

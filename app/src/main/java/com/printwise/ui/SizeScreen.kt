@@ -108,6 +108,7 @@ fun SizeScreen(vm: PrintwiseViewModel, onAddPiece: () -> Unit, onNext: () -> Uni
                     number = index + 1,
                     piece = piece,
                     tooBig = piece.id in layout.tooBig,
+                    tourTargets = index == 0,
                     onRename = { renaming = piece },
                     modifier = Modifier.animateItem()
                 )
@@ -141,7 +142,7 @@ fun SizeScreen(vm: PrintwiseViewModel, onAddPiece: () -> Unit, onNext: () -> Uni
                 Button(
                     onClick = onNext,
                     enabled = layout.placements.isNotEmpty(),
-                    modifier = Modifier.height(56.dp),
+                    modifier = Modifier.height(56.dp).tourTarget(TourTarget.PREVIEW),
                     shape = MaterialTheme.shapes.medium
                 ) {
                     Text("Preview pages", style = MaterialTheme.typography.titleMedium)
@@ -170,7 +171,7 @@ private fun UnitRow(vm: PrintwiseViewModel) {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f)
         )
-        SingleChoiceSegmentedButtonRow {
+        SingleChoiceSegmentedButtonRow(Modifier.tourTarget(TourTarget.UNITS)) {
             LengthUnit.entries.forEachIndexed { index, option ->
                 val selected = vm.unit == option
                 SegmentedButton(
@@ -205,7 +206,9 @@ private fun PieceSizeCard(
     piece: PrintPiece,
     tooBig: Boolean,
     onRename: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The first card carries the tour's Height and Copies targets. */
+    tourTargets: Boolean = false
 ) {
     Surface(
         modifier.widthIn(max = 640.dp).fillMaxWidth(),
@@ -227,7 +230,7 @@ private fun PieceSizeCard(
                             PieceMenu(vm, piece, onRename)
                         }
                     }
-                    SizeControls(vm, piece, number)
+                    SizeControls(vm, piece, number, tourTargets)
                     AnimatedVisibility(
                         visible = tooBig,
                         enter = expandVertically(tween(Motion.BASE_MS, easing = Motion.EaseOut)) + fadeIn(tween(Motion.BASE_MS)),
@@ -376,12 +379,12 @@ private fun PieceMenu(vm: PrintwiseViewModel, piece: PrintPiece, onRename: () ->
 
 /** Height and Copies, each as label · minus · value · plus, in fixed columns so every card lines up. */
 @Composable
-private fun SizeControls(vm: PrintwiseViewModel, piece: PrintPiece, number: Int) {
+private fun SizeControls(vm: PrintwiseViewModel, piece: PrintPiece, number: Int, tourTargets: Boolean) {
     val unit = vm.unit
     val height = vm.heightOf(piece)
     val shown = unit.fromInches(height)
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides CONTROL_SIZE) {
-        ControlRow("Height") {
+        ControlRow("Height", if (tourTargets) Modifier.tourTarget(TourTarget.HEIGHT) else Modifier) {
             Stepper(
                 value = unit.formatNumber(height),
                 onMinus = { vm.setHeight(piece.id, unit.toInches(snap(shown - unit.step, unit.step))) },
@@ -398,7 +401,7 @@ private fun SizeControls(vm: PrintwiseViewModel, piece: PrintPiece, number: Int)
                 decimal = true
             )
         }
-        ControlRow("Copies") {
+        ControlRow("Copies", if (tourTargets) Modifier.tourTarget(TourTarget.COPIES) else Modifier) {
             Stepper(
                 value = "${piece.copies}",
                 onMinus = { vm.setCopies(piece.id, piece.copies - 1) },
@@ -414,8 +417,8 @@ private fun SizeControls(vm: PrintwiseViewModel, piece: PrintPiece, number: Int)
 }
 
 @Composable
-private fun ControlRow(label: String, control: @Composable () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun ControlRow(label: String, modifier: Modifier = Modifier, control: @Composable () -> Unit) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,
             style = MaterialTheme.typography.labelLarge,

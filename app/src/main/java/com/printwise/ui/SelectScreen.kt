@@ -148,6 +148,7 @@ fun SelectScreen(vm: PrintwiseViewModel, onAddSheet: () -> Unit, onNext: () -> U
                 .fillMaxWidth()
                 .clipToBounds()
                 .background(MaterialTheme.printwise.workspace)
+                .tourTarget(TourTarget.SHEET)
         ) {
             SheetEditor(vm, image, viewport)
             DetectionBanner(detection, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
@@ -169,7 +170,7 @@ fun SelectScreen(vm: PrintwiseViewModel, onAddSheet: () -> Unit, onNext: () -> U
             Button(
                 onClick = onNext,
                 enabled = vm.pieces.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp).tourTarget(TourTarget.NEXT),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Text("Next: set sizes", style = MaterialTheme.typography.titleMedium)
@@ -214,7 +215,7 @@ private fun SheetChips(vm: PrintwiseViewModel, onAddSheet: () -> Unit) {
                 enabled = vm.canAddSheet,
                 label = { Text(if (vm.loading) "Opening…" else "Add picture") },
                 leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.animateItem()
+                modifier = Modifier.animateItem().tourTarget(TourTarget.ADD_PICTURE)
             )
         }
     }
